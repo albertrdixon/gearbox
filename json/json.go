@@ -27,7 +27,7 @@ func HTMLUnescape(s string) string {
 	return r
 }
 
-func Encode(o interface{}) error {
+func Encode(o interface{}) (string, error) {
 	b := new(bytes.Buffer)
 	if e := json.NewEncoder(b).Encode(o); e != nil {
 		return b.String(), e
