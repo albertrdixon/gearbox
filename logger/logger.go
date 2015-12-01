@@ -18,10 +18,17 @@ const (
 )
 
 var (
-	level  = INFO
-	levels = []logutils.LogLevel{FATAL, ERROR, WARN, INFO, DEBUG}
+	levelMap = map[string]logutils.LogLevel{
+		"debug": DEBUG,
+		"info":  INFO,
+		"warn":  WARN,
+		"error": ERROR,
+		"fatal": FATAL,
+	}
 
 	Levels = []string{"fatal", "error", "warn", "info", "debug"}
+
+	filter *logutils.LevelFilter
 )
 
 func Configure(lvl, prefix string, writer io.Writer) {
@@ -29,25 +36,33 @@ func Configure(lvl, prefix string, writer io.Writer) {
 		writer = os.Stdout
 	}
 	level = parse(lvl)
-	f := &logutils.LevelFilter{
+	filter = &logutils.LevelFilter{
 		Levels:   levels,
 		MinLevel: level,
 		Writer:   writer,
 	}
-	log.SetOutput(f)
+	log.SetOutput(filter)
 	log.SetPrefix(prefix)
 }
 
-func Errorf(f string, m ...interface{}) { writeLog(ERROR, f, m...) }
-func Warnf(f string, m ...interface{})  { writeLog(WARN, f, m...) }
-func Infof(f string, m ...interface{})  { writeLog(INFO, f, m...) }
+func Level() logutils.LogLevel {
+	return filter.MinLevel
+}
+
+func SetLevel(lvl string) {
+	filter.SetMinLevel(parse(lvl))
+}
+
+func Errorf(f string, m ...interface{}) { writeLog("error", f, m...) }
+func Warnf(f string, m ...interface{})  { writeLog("warn", f, m...) }
+func Infof(f string, m ...interface{})  { writeLog("info", f, m...) }
 func Debugf(f string, m ...interface{}) {
 	if level == DEBUG {
-		writeLog(DEBUG, f, m...)
+		writeLog("debug", f, m...)
 	}
 }
 func Fatalf(f string, m ...interface{}) {
-	writeLog(FATAL, f, m...)
+	writeLog("fatal", f, m...)
 	os.Exit(1)
 }
 
@@ -60,10 +75,8 @@ func writeLog(p, f string, m ...interface{}) {
 }
 
 func parse(l string) logutils.LogLevel {
-	for i := range levels {
-		if logutils.LogLevel(l) == levels[i] {
-			return levels[i]
-		}
+	if lvl, ok := levelMap[l]; ok {
+		return lvl
 	}
 	return INFO
 }
