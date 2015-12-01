@@ -26,6 +26,7 @@ var (
 		"fatal": FATAL,
 	}
 
+	levels = []logutils.LogLevel{DEBUG, INFO, WARN, ERROR, FATAL}
 	Levels = []string{"fatal", "error", "warn", "info", "debug"}
 
 	filter *logutils.LevelFilter
@@ -35,10 +36,9 @@ func Configure(lvl, prefix string, writer io.Writer) {
 	if writer == nil {
 		writer = os.Stdout
 	}
-	level = parse(lvl)
 	filter = &logutils.LevelFilter{
 		Levels:   levels,
-		MinLevel: level,
+		MinLevel: parse(lvl),
 		Writer:   writer,
 	}
 	log.SetOutput(filter)
@@ -57,7 +57,7 @@ func Errorf(f string, m ...interface{}) { writeLog("error", f, m...) }
 func Warnf(f string, m ...interface{})  { writeLog("warn", f, m...) }
 func Infof(f string, m ...interface{})  { writeLog("info", f, m...) }
 func Debugf(f string, m ...interface{}) {
-	if level == DEBUG {
+	if Level() == DEBUG {
 		writeLog("debug", f, m...)
 	}
 }
