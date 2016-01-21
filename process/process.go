@@ -19,6 +19,7 @@ type Process struct {
 	args      []string
 	c         context.Context
 	out       []Writer
+	stopC     chan struct{}
 }
 
 type Reader interface {
@@ -45,10 +46,11 @@ func New(name, cmd string, out ...Writer) (*Process, error) {
 	}
 
 	return &Process{
-		name: name,
-		bin:  bin,
-		args: fields[1:],
-		out:  out,
+		name:  name,
+		bin:   bin,
+		args:  fields[1:],
+		out:   out,
+		stopC: make(chan struct{}, 1),
 	}, nil
 }
 
@@ -86,27 +88,19 @@ func (p *Process) Execute(ctx context.Context) error {
 		return er
 	}
 
-	c, q := context.WithCancel(context.Background())
+	c, cancel := context.WithCancel(context.Background())
 	p.c = c
+
 	go stream(p, sto)
 	go stream(p, ste)
 
 	if er := p.Start(); er != nil {
+		cancel()
 		return er
 	}
-	go func() {
-		p.Wait()
-		q()
-	}()
 
-	go func() {
-		select {
-		case <-p.c.Done():
-			return
-		case <-ctx.Done():
-			p.Kill()
-		}
-	}()
+	go listen(p, ctx)
+	go wait(p, cancel)
 
 	return nil
 }
@@ -120,9 +114,16 @@ func (p *Process) ExecuteAndRestart(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return nil
+		case <-p.stopC:
+			return nil
 		case <-p.c.Done():
 		}
 	}
+}
+
+func (p *Process) Stop() {
+	p.stopC <- struct{}{}
+	close(p.stopC)
 }
 
 func (p *Process) SetUser(uid, gid uint32) *Process {
@@ -160,7 +161,7 @@ func (p *Process) Signal(sig os.Signal) error {
 	return nil
 }
 
-func (p *Process) Stop() error {
+func (p *Process) Term() error {
 	if !p.Exited() {
 		if er := p.Signal(syscall.SIGTERM); er != nil {
 			return er
@@ -183,4 +184,20 @@ func stream(p *Process, r Reader) {
 			}
 		}
 	}
+}
+
+func listen(p *Process, ctx context.Context) {
+	select {
+	case <-p.c.Done():
+		return
+	case <-ctx.Done():
+		p.Kill()
+	case <-p.stopC:
+		p.Term()
+	}
+}
+
+func wait(p *Process, cancel context.CancelFunc) {
+	p.Wait()
+	cancel()
 }
