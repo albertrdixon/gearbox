@@ -52,7 +52,6 @@ func New(name, cmd string, out ...Writer) (*Process, error) {
 		args:  fields[1:],
 		out:   out,
 		stopC: make(chan struct{}, 1),
-		errC:  make(chan error, 1),
 	}, nil
 }
 
@@ -146,12 +145,12 @@ func (p *Process) Release() error {
 	return nil
 }
 
-func (p *Process) Exited() bool {
+func (p *Process) Dead() bool {
 	return p.ProcessState != nil && p.ProcessState.Exited()
 }
 
 func (p *Process) Kill() error {
-	if !p.Exited() && p.Process != nil {
+	if !p.Dead() && p.Process != nil {
 		return p.Process.Kill()
 	}
 	return nil
@@ -165,7 +164,7 @@ func (p *Process) Signal(sig os.Signal) error {
 }
 
 func (p *Process) Term() error {
-	if !p.Exited() {
+	if !p.Dead() {
 		if er := p.Signal(syscall.SIGTERM); er != nil {
 			return er
 		}
