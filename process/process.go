@@ -20,6 +20,7 @@ type Process struct {
 	c         context.Context
 	out       []Writer
 	stopC     chan struct{}
+	er        error
 }
 
 type Reader interface {
@@ -51,6 +52,7 @@ func New(name, cmd string, out ...Writer) (*Process, error) {
 		args:  fields[1:],
 		out:   out,
 		stopC: make(chan struct{}, 1),
+		errC:  make(chan error, 1),
 	}, nil
 }
 
@@ -105,17 +107,18 @@ func (p *Process) Execute(ctx context.Context) error {
 	return nil
 }
 
-func (p *Process) ExecuteAndRestart(ctx context.Context) error {
+func (p *Process) ExecuteAndRestart(ctx context.Context) {
 	for {
 		if er := p.Execute(ctx); er != nil {
-			return er
+			p.er = er
+			return
 		}
 
 		select {
 		case <-ctx.Done():
-			return nil
+			return
 		case <-p.stopC:
-			return nil
+			return
 		case <-p.c.Done():
 		}
 	}
