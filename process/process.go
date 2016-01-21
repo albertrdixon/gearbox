@@ -15,6 +15,7 @@ import (
 
 type Process struct {
 	*exec.Cmd
+	attr      *syscall.SysProcAttr
 	name, bin string
 	args      []string
 	c         context.Context
@@ -79,6 +80,9 @@ func (p *Process) Exited() <-chan struct{} {
 
 func (p *Process) Execute(ctx context.Context) error {
 	p.Cmd = exec.Command(p.bin, p.args...)
+	if p.attr != nil {
+		p.Cmd.SysProcAttr = p.attr
+	}
 
 	sto, er := p.StdoutPipe()
 	if er != nil {
@@ -129,7 +133,7 @@ func (p *Process) Stop() {
 }
 
 func (p *Process) SetUser(uid, gid uint32) *Process {
-	p.Cmd.SysProcAttr = &syscall.SysProcAttr{
+	p.attr = &syscall.SysProcAttr{
 		Credential: &syscall.Credential{
 			Uid: uid,
 			Gid: gid,
