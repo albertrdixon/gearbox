@@ -4,58 +4,79 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"strings"
 	"syscall"
 	"time"
 
-	"github.com/albertrdixon/gearbox/logger"
-
 	"golang.org/x/net/context"
 )
 
 type Process struct {
 	*exec.Cmd
-	name   string
-	ctx    context.Context
-	out    io.Writer
-	exited chan struct{}
+	name, bin string
+	args      []string
+	c         context.Context
+	out       []Writer
 }
 
-func New(name, cmd string, out io.Writer, c context.Context) (*Process, error) {
-	list := strings.Fields(cmd)
-	if len(list) < 1 {
+type Reader interface {
+	Read(p []byte) (n int, err error)
+}
+
+type Writer interface {
+	Write(p []byte) (n int, err error)
+}
+
+func New(name, cmd string, out ...Writer) (*Process, error) {
+	fields := strings.Fields(cmd)
+	if len(fields) < 1 {
 		return nil, errors.New("Bad command")
 	}
 
-	path, er := exec.LookPath(list[0])
+	bin, er := exec.LookPath(fields[0])
 	if er != nil {
 		return nil, er
 	}
+
+	if out == nil || len(out) < 1 {
+		out = []Writer{os.Stdout}
+	}
+
 	return &Process{
-		Cmd:    exec.Command(path, list[1:]...),
-		name:   name,
-		ctx:    c,
-		out:    out,
-		exited: make(chan struct{}, 1),
+		name: name,
+		bin:  bin,
+		args: fields[1:],
+		out:  out,
 	}, nil
 }
 
 func (p *Process) String() string {
-	pid := -1
-	if p.Process != nil {
-		pid = p.Process.Pid
+	return fmt.Sprintf("%s(pid=%d)", p.name, p.Pid())
+}
+
+func (p *Process) AddWriter(w Writer) {
+	if p.out == nil {
+		p.out = make([]Writer, 0, 1)
 	}
-	return fmt.Sprintf("%s(pid=%d)", p.name, pid)
+	p.out = append(p.out, w)
+}
+
+func (p *Process) Pid() int {
+	if p.Process != nil {
+		return p.Process.Pid
+	}
+	return -1
 }
 
 func (p *Process) Exited() <-chan struct{} {
-	return p.exited
+	return p.c.Done()
 }
 
-func (p *Process) Execute() error {
+func (p *Process) Execute(ctx context.Context) error {
+	p.Cmd = exec.Command(p.bin, p.args...)
+
 	sto, er := p.StdoutPipe()
 	if er != nil {
 		return er
@@ -65,83 +86,100 @@ func (p *Process) Execute() error {
 		return er
 	}
 
-	go stream(p.name, sto, p.out, p.ctx)
-	go stream(p.name, ste, p.out, p.ctx)
+	c, q := context.WithCancel(context.Background())
+	p.c = c
+	go stream(p, sto)
+	go stream(p, ste)
 
 	if er := p.Start(); er != nil {
 		return er
 	}
-	go monitor(p)
+	go func() {
+		p.Wait()
+		q()
+	}()
 
 	go func() {
-		defer p.Process.Release()
 		select {
-		case <-p.exited:
+		case <-p.c.Done():
 			return
-		case <-p.ctx.Done():
-			p.Stop()
+		case <-ctx.Done():
+			p.Kill()
 		}
 	}()
 
 	return nil
 }
 
-func (p *Process) SetUser(uid, gid int) {
-	p.Cmd.SysProcAttr = &syscall.SysProcAttr{
-		Credential: &syscall.Credential{
-			Uid: uint32(uid),
-			Gid: uint32(gid),
-		},
+func (p *Process) ExecuteAndRestart(ctx context.Context) error {
+	for {
+		if er := p.Execute(ctx); er != nil {
+			return er
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-p.c.Done():
+		}
 	}
 }
 
-func (p *Process) Stop() error {
-	if p.ProcessState != nil && !p.ProcessState.Exited() {
-		logger.Debugf("Sending SIGTERM to %s", p.name)
-		if er := p.Process.Signal(syscall.SIGTERM); er != nil {
-			return er
-		}
-		time.Sleep(100 * time.Millisecond)
-		if p.ProcessState != nil && !p.ProcessState.Exited() {
-			logger.Debugf("SIGTERM to %s failed, killing", p.name)
-			if er := p.Process.Kill(); er != nil {
-				return er
-			}
-		}
-		p.Process.Release()
+func (p *Process) SetUser(uid, gid uint32) *Process {
+	p.Cmd.SysProcAttr = &syscall.SysProcAttr{
+		Credential: &syscall.Credential{
+			Uid: uid,
+			Gid: gid,
+		},
+	}
+	return p
+}
+
+func (p *Process) Release() error {
+	if p.Process != nil {
+		return p.Process.Release()
 	}
 	return nil
 }
 
-func stream(name string, r io.Reader, w io.Writer, c context.Context) {
+func (p *Process) Exited() bool {
+	return p.ProcessState != nil && p.ProcessState.Exited()
+}
+
+func (p *Process) Kill() error {
+	if !p.Exited() && p.Process != nil {
+		return p.Process.Kill()
+	}
+	return nil
+}
+
+func (p *Process) Signal(sig os.Signal) error {
+	if p.Process != nil {
+		return p.Process.Signal(sig)
+	}
+	return nil
+}
+
+func (p *Process) Stop() error {
+	if !p.Exited() {
+		if er := p.Signal(syscall.SIGTERM); er != nil {
+			return er
+		}
+		time.Sleep(20 * time.Millisecond)
+		return p.Kill()
+	}
+	return nil
+}
+
+func stream(p *Process, r Reader) {
 	s := bufio.NewScanner(r)
 	for s.Scan() {
 		select {
-		case <-c.Done():
+		case <-p.c.Done():
 			return
 		default:
-			fmt.Fprintf(w, "[%s] %s\n", name, s.Text())
-		}
-	}
-}
-
-func monitor(p *Process) {
-	defer close(p.exited)
-	t := time.NewTicker(5 * time.Second)
-	for {
-		select {
-		case <-p.ctx.Done():
-			return
-		case <-t.C:
-			if p.ProcessState != nil && p.ProcessState.Exited() {
-				p.exited <- struct{}{}
-				return
-			}
-
-			pid := p.Process.Pid
-			if _, er := os.FindProcess(pid); er != nil {
-				p.exited <- struct{}{}
-				return
+			for i := range p.out {
+				fmt.Fprintf(p.out[i], "[%s] %s\n", p.name, s.Text())
 			}
 		}
 	}
