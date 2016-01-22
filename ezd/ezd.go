@@ -11,10 +11,10 @@ import (
 	"github.com/coreos/etcd/client"
 )
 
-var keyReadErr = errors.New("Key read error")
+var EmptyNodeErr = errors.New("client: empty node")
 
 const (
-	DefaultTimeout = 20 * time.Second
+	DefaultTimeout = 10 * time.Second
 )
 
 type Client interface {
@@ -52,9 +52,9 @@ func EnableDebug()               { client.EnablecURLDebug() }
 func DisableDebug()              { client.DisablecURLDebug() }
 func IsKeyNotFound(e error) bool { return client.IsKeyNotFound(e) }
 
-func (s *etcd) Exists(key string) bool {
-	_, e := s.Get(key)
-	return e == nil
+func (s *etcd) Exists(key string) (e error) {
+	_, e = s.Get(key)
+	return
 }
 
 func (e *etcd) Keys(prefix string) ([]string, error) {
@@ -148,14 +148,14 @@ func (e *etcd) del(c context.Context, fn context.CancelFunc, o *client.DeleteOpt
 
 func extractNodeValue(node *client.Node) (string, error) {
 	if node == nil {
-		return "", KeyReadErr
+		return "", EmptyNodeErr
 	}
 	return node.Value, nil
 }
 
 func extractKeys(node *client.Node) ([]string, error) {
 	if node == nil {
-		return nil, KeyReadErr
+		return nil, EmptyNodeErr
 	}
 	if !node.Dir {
 		return []string{}, nil
