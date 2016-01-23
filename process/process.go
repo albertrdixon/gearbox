@@ -65,8 +65,19 @@ func (p *Process) Dir(dir string) *Process {
 	p.dir = dir
 	return p
 }
+
 func (p *process) Env(env []string) *Process {
 	p.env = env
+	return p
+}
+
+func (p *Process) SetUser(uid, gid uint32) *Process {
+	p.attr = &syscall.SysProcAttr{
+		Credential: &syscall.Credential{
+			Uid: uid,
+			Gid: gid,
+		},
+	}
 	return p
 }
 
@@ -139,16 +150,6 @@ func (p *Process) ExecuteAndRestart(ctx context.Context) {
 func (p *Process) Stop() {
 	p.stopC <- struct{}{}
 	close(p.stopC)
-}
-
-func (p *Process) SetUser(uid, gid uint32) *Process {
-	p.attr = &syscall.SysProcAttr{
-		Credential: &syscall.Credential{
-			Uid: uid,
-			Gid: gid,
-		},
-	}
-	return p
 }
 
 func (p *Process) Release() error {
