@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -19,20 +20,12 @@ type Process struct {
 	name, bin string
 	args      []string
 	c         context.Context
-	out       []Writer
+	out       []io.Writer
 	stopC     chan struct{}
 	er        error
 }
 
-type Reader interface {
-	Read(p []byte) (n int, err error)
-}
-
-type Writer interface {
-	Write(p []byte) (n int, err error)
-}
-
-func New(name, cmd string, out ...Writer) (*Process, error) {
+func New(name, cmd string, out ...io.Writer) (*Process, error) {
 	fields := strings.Fields(cmd)
 	if len(fields) < 1 {
 		return nil, errors.New("Bad command")
@@ -44,7 +37,7 @@ func New(name, cmd string, out ...Writer) (*Process, error) {
 	}
 
 	if out == nil || len(out) < 1 {
-		out = []Writer{os.Stdout}
+		out = []io.Writer{os.Stdout}
 	}
 
 	return &Process{
@@ -60,9 +53,9 @@ func (p *Process) String() string {
 	return fmt.Sprintf("%s(pid=%d)", p.name, p.Pid())
 }
 
-func (p *Process) AddWriter(w Writer) {
+func (p *Process) AddWriter(w io.Writer) {
 	if p.out == nil {
-		p.out = make([]Writer, 0, 1)
+		p.out = make([]io.Writer, 0, 1)
 	}
 	p.out = append(p.out, w)
 }
@@ -178,7 +171,7 @@ func (p *Process) Term() error {
 	return nil
 }
 
-func stream(p *Process, r Reader) {
+func stream(p *Process, r io.Reader) {
 	s := bufio.NewScanner(r)
 	for s.Scan() {
 		select {
