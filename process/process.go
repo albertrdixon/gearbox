@@ -61,12 +61,12 @@ func (p *Process) AddWriter(w io.Writer) *Process {
 	return p
 }
 
-func (p *Process) Dir(dir string) *Process {
+func (p *Process) SetDir(dir string) *Process {
 	p.dir = dir
 	return p
 }
 
-func (p *process) Env(env []string) *Process {
+func (p *process) SetEnv(env []string) *Process {
 	p.env = env
 	return p
 }
