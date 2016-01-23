@@ -200,14 +200,18 @@ func (p *Process) Term() error {
 
 func stream(p *Process, r io.Reader) {
 	s := bufio.NewScanner(r)
-	for s.Scan() {
+	for {
 		select {
 		case <-p.c.Done():
 			return
 		default:
-			txt := s.Text()
-			for _, w := range p.out {
-				fmt.Fprintf(w, "[%s] %s\n", p.name, txt)
+			if s.Scan() {
+				txt := s.Text()
+				for _, w := range p.out {
+					fmt.Fprintf(w, "[%s] %s\n", p.name, txt)
+				}
+			} else {
+				return
 			}
 		}
 	}
