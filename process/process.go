@@ -169,7 +169,10 @@ func (p *Process) Dead() bool {
 }
 
 func (p *Process) Kill() error {
-	if !p.Dead() && p.Process != nil {
+	// if !p.Dead() && p.Process != nil {
+	// 	return p.Process.Kill()
+	// }
+	if p.Process != nil {
 		return p.Process.Kill()
 	}
 	return nil
@@ -183,12 +186,14 @@ func (p *Process) Signal(sig os.Signal) error {
 }
 
 func (p *Process) Term() error {
-	if !p.Dead() {
+	if p.Process != nil {
 		if er := p.Signal(syscall.SIGTERM); er != nil {
 			return er
 		}
 		time.Sleep(20 * time.Millisecond)
-		return p.Kill()
+		if p.ProcessState == nil {
+			return p.Kill()
+		}
 	}
 	return nil
 }
