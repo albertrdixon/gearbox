@@ -82,7 +82,7 @@ func (p *Process) SetUser(uid, gid uint32) *Process {
 }
 
 func (p *Process) Pid() int {
-	if p.Process != nil {
+	if p.Cmd != nil && p.Cmd.Process != nil {
 		return p.Process.Pid
 	}
 	return -1
