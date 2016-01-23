@@ -51,7 +51,11 @@ func New(name, cmd string, out ...io.Writer) (*Process, error) {
 }
 
 func (p *Process) String() string {
-	return fmt.Sprintf("%s(pid=%d)", p.name, p.Pid())
+	pid := p.Pid()
+	if pid == -1 {
+		return fmt.Sprint(p.name)
+	}
+	return fmt.Sprintf("%s(pid=%d)", p.name, pid)
 }
 
 func (p *Process) AddWriter(w io.Writer) *Process {
