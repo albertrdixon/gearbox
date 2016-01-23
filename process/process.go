@@ -66,7 +66,7 @@ func (p *Process) SetDir(dir string) *Process {
 	return p
 }
 
-func (p *process) SetEnv(env []string) *Process {
+func (p *Process) SetEnv(env []string) *Process {
 	p.env = env
 	return p
 }
