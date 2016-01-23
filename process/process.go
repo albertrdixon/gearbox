@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"strings"
@@ -195,10 +196,14 @@ func stream(p *Process, r io.Reader) {
 		case <-p.c.Done():
 			return
 		default:
-			for i := range p.out {
-				fmt.Fprintf(p.out[i], "[%s] %s\n", p.name, s.Text())
+			txt := s.Text()
+			for _, w := range p.out {
+				fmt.Fprintf(w, "[%s] %s\n", p.name, txt)
 			}
 		}
+	}
+	if s.Err() != nil {
+		log.Printf("[error] Stream: %v", s.Err())
 	}
 }
 
@@ -215,5 +220,6 @@ func listen(p *Process, ctx context.Context) {
 
 func wait(p *Process, cancel context.CancelFunc) {
 	p.Wait()
+	log.Printf("[info] %v exited", p)
 	cancel()
 }
