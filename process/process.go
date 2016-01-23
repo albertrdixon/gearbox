@@ -212,7 +212,7 @@ func stream(p *Process, r io.Reader) {
 		}
 	}
 	if s.Err() != nil {
-		log.Printf("[error] Stream: %v", s.Err())
+		log.Printf("[error] %v stream error: %v", p, s.Err())
 	}
 }
 
@@ -229,6 +229,6 @@ func listen(p *Process, ctx context.Context) {
 
 func wait(p *Process, cancel context.CancelFunc) {
 	p.Wait()
-	log.Printf("[info] %v exited", p)
+	log.Printf("[debug] %v exited", p)
 	cancel()
 }
