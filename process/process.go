@@ -16,13 +16,13 @@ import (
 
 type Process struct {
 	*exec.Cmd
-	attr      *syscall.SysProcAttr
-	name, bin string
-	args      []string
-	c         context.Context
-	out       []io.Writer
-	stopC     chan struct{}
-	er        error
+	attr           *syscall.SysProcAttr
+	name, bin, dir string
+	args, env      []string
+	c              context.Context
+	out            []io.Writer
+	stopC          chan struct{}
+	er             error
 }
 
 func New(name, cmd string, out ...io.Writer) (*Process, error) {
@@ -53,11 +53,21 @@ func (p *Process) String() string {
 	return fmt.Sprintf("%s(pid=%d)", p.name, p.Pid())
 }
 
-func (p *Process) AddWriter(w io.Writer) {
+func (p *Process) AddWriter(w io.Writer) *Process {
 	if p.out == nil {
 		p.out = make([]io.Writer, 0, 1)
 	}
 	p.out = append(p.out, w)
+	return p
+}
+
+func (p *Process) Dir(dir string) *Process {
+	p.dir = dir
+	return p
+}
+func (p *process) Env(env []string) *Process {
+	p.env = env
+	return p
 }
 
 func (p *Process) Pid() int {
@@ -75,6 +85,12 @@ func (p *Process) Execute(ctx context.Context) error {
 	p.Cmd = exec.Command(p.bin, p.args...)
 	if p.attr != nil {
 		p.Cmd.SysProcAttr = p.attr
+	}
+	if p.dir != "" {
+		p.Cmd.Dir = p.dir
+	}
+	if len(p.env) > 0 {
+		p.Cmd.Env = p.env
 	}
 
 	sto, er := p.StdoutPipe()
