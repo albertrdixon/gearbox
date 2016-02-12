@@ -42,11 +42,11 @@ func New(name, cmd string, out ...io.Writer) (*Process, error) {
 	}
 
 	return &Process{
-		name:  name,
-		bin:   bin,
-		args:  fields[1:],
-		out:   out,
-		stopC: make(chan struct{}, 1),
+		name: name,
+		bin:  bin,
+		args: fields[1:],
+		out:  out,
+		// stopC: make(chan struct{}, 1),
 	}, nil
 }
 
@@ -98,6 +98,7 @@ func (p *Process) Exited() <-chan struct{} {
 }
 
 func (p *Process) Execute(ctx context.Context) error {
+	p.stopC = make(chan struct{}, 1)
 	p.Cmd = exec.Command(p.bin, p.args...)
 	if p.attr != nil {
 		p.Cmd.SysProcAttr = p.attr
