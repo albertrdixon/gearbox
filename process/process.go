@@ -46,6 +46,7 @@ func New(name, cmd string, out ...io.Writer) (*Process, error) {
 		bin:  bin,
 		args: fields[1:],
 		out:  out,
+		er:   nil,
 		// stopC: make(chan struct{}, 1),
 	}, nil
 }
@@ -199,6 +200,10 @@ func (p *Process) Term() error {
 	return nil
 }
 
+func (p *Process) Error() error {
+	return p.er
+}
+
 func stream(p *Process, r io.Reader) {
 	s := bufio.NewScanner(r)
 	for {
@@ -233,7 +238,7 @@ func listen(p *Process, ctx context.Context) {
 }
 
 func wait(p *Process, cancel context.CancelFunc) {
-	p.Wait()
+	p.er = p.Wait()
 	log.Printf("[debug] %v exited", p)
 	cancel()
 }
