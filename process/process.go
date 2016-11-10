@@ -22,6 +22,7 @@ type Process struct {
 	args, env      []string
 	c              context.Context
 	out            []io.Writer
+	stdin          io.Reader
 	stopC          chan struct{}
 	er             error
 }
@@ -42,12 +43,12 @@ func New(name, cmd string, out ...io.Writer) (*Process, error) {
 	}
 
 	return &Process{
-		name: name,
-		bin:  bin,
-		args: fields[1:],
-		out:  out,
-		er:   nil,
-		// stopC: make(chan struct{}, 1),
+		name:  name,
+		bin:   bin,
+		args:  fields[1:],
+		out:   out,
+		stdin: nil,
+		er:    nil,
 	}, nil
 }
 
@@ -64,6 +65,11 @@ func (p *Process) AddWriter(w io.Writer) *Process {
 		p.out = make([]io.Writer, 0, 1)
 	}
 	p.out = append(p.out, w)
+	return p
+}
+
+func (p *Process) Stdin(r io.Reader) *Process {
+	p.stdin = r
 	return p
 }
 
@@ -126,6 +132,14 @@ func (p *Process) Execute(ctx context.Context) error {
 	go stream(p, sto)
 	go stream(p, ste)
 
+	if p.stdin != nil {
+		sti, er := p.StdinPipe()
+		if er != nil {
+			return er
+		}
+		go toStdin(p, sti)
+	}
+
 	if er := p.Start(); er != nil {
 		cancel()
 		return er
@@ -171,9 +185,6 @@ func (p *Process) Dead() bool {
 }
 
 func (p *Process) Kill() error {
-	// if !p.Dead() && p.Process != nil {
-	// 	return p.Process.Kill()
-	// }
 	if p.Process != nil {
 		return p.Process.Kill()
 	}
@@ -241,4 +252,13 @@ func wait(p *Process, cancel context.CancelFunc) {
 	p.er = p.Wait()
 	log.Printf("[debug] %v exited", p)
 	cancel()
+}
+
+func toStdin(p *Process, dst io.Writer) {
+	select {
+	case <-p.c.Done():
+		return
+	default:
+		io.Copy(dst, p.stdin)
+	}
 }
