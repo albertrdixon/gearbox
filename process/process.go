@@ -19,6 +19,7 @@ type Process struct {
 	*exec.Cmd
 	attr           *syscall.SysProcAttr
 	name, bin, dir string
+	rawOut, tty    bool
 	args, env      []string
 	c              context.Context
 	out            []io.Writer
@@ -38,17 +39,15 @@ func New(name, cmd string, out ...io.Writer) (*Process, error) {
 		return nil, er
 	}
 
-	if out == nil || len(out) < 1 {
-		out = []io.Writer{os.Stdout}
-	}
-
 	return &Process{
-		name:  name,
-		bin:   bin,
-		args:  fields[1:],
-		out:   out,
-		stdin: nil,
-		er:    nil,
+		name:   name,
+		bin:    bin,
+		args:   fields[1:],
+		tty:    false,
+		out:    out,
+		rawOut: false,
+		stdin:  nil,
+		er:     nil,
 	}, nil
 }
 
@@ -68,7 +67,7 @@ func (p *Process) AddWriter(w io.Writer) *Process {
 	return p
 }
 
-func (p *Process) Stdin(r io.Reader) *Process {
+func (p *Process) SetStdin(r io.Reader) *Process {
 	p.stdin = r
 	return p
 }
@@ -117,24 +116,34 @@ func (p *Process) Execute(ctx context.Context) error {
 		p.Cmd.Env = p.env
 	}
 
-	sto, er := p.StdoutPipe()
-	if er != nil {
-		return er
-	}
-	ste, er := p.StderrPipe()
-	if er != nil {
-		return er
-	}
-
 	c, cancel := context.WithCancel(context.Background())
 	p.c = c
 
-	go stream(p, sto)
-	go stream(p, ste)
+	if p.out != nil {
+		sto, er := p.StdoutPipe()
+		if er != nil {
+			cancel()
+			return er
+		}
+		ste, er := p.StderrPipe()
+		if er != nil {
+			cancel()
+			return er
+		}
 
-	if p.stdin != nil {
+		go stream(p, sto)
+		go stream(p, ste)
+	} else {
+		p.Stdout = nil
+		p.Stderr = nil
+	}
+
+	if p.tty {
+		p.Stdin = os.Stdin
+	} else if p.stdin != nil {
 		sti, er := p.StdinPipe()
 		if er != nil {
+			cancel()
 			return er
 		}
 		go toStdin(p, sti)
@@ -166,6 +175,17 @@ func (p *Process) ExecuteAndRestart(ctx context.Context) {
 		case <-p.c.Done():
 		}
 	}
+}
+
+func (p *Process) RawOutput() *Process {
+	p.rawOut = true
+	return p
+}
+
+func (p *Process) MakeInteractive() *Process {
+	p.RawOutput()
+	p.tty = true
+	return p
 }
 
 func (p *Process) Stop() {
@@ -225,7 +245,11 @@ func stream(p *Process, r io.Reader) {
 			if s.Scan() {
 				txt := s.Text()
 				for _, w := range p.out {
-					fmt.Fprintf(w, "[%s] %s\n", p.name, txt)
+					if p.rawOut {
+						fmt.Fprintln(w, txt)
+					} else {
+						fmt.Fprintf(w, "[%s] %s\n", p.name, txt)
+					}
 				}
 			} else {
 				return
