@@ -52,6 +52,7 @@ var (
 	clientContainer = client.Flag("container", "Chef container to use. Overrides image if set.").Short('c').String()
 	clientCache     = client.Flag("cache-name", "Chef cache container name.").Default("chef-cache").String()
 	clientForceFmt  = client.Flag("force-formatter", "Show formatter output instead of logger output.").Short('F').Default("false").Bool()
+	clientLocal     = client.Flag("local", "Run in local or chef-zero mode.").Short('z').Default("false").Bool()
 
 	clientDefault = &clientRB{
 		p: "/etc/chef/client.rb",
@@ -105,7 +106,7 @@ var (
 	}
 )
 
-func runChef(container, cache, env, runlist string, forceFmt, pull bool) error {
+func runChef(container, cache, env, runlist string, forceFmt, local, pull bool) error {
 	cmd := append(buildClientCmd(cache),
 		"--name=chef",
 		container,
@@ -116,6 +117,9 @@ func runChef(container, cache, env, runlist string, forceFmt, pull bool) error {
 	)
 	if forceFmt {
 		cmd = append(cmd, "--force-formatter")
+	}
+	if local {
+		cmd = append(cmd, "--local-mode")
 	}
 	if pull {
 		doPull(container)
@@ -261,7 +265,7 @@ func main() {
 		}
 		defer cleanupChef()
 		newClientRB(filepath.Join(*chefDir, "client.rb"), *clientName, *clientEnv, *sslVerify).write()
-		if er := runChef(c, *clientCache, *clientEnv, *clientRunlist, *clientForceFmt, *pullImage); er != nil {
+		if er := runChef(c, *clientCache, *clientEnv, *clientRunlist, *clientForceFmt, *clientLocal, *pullImage); er != nil {
 			logger.Fatalf(er.Error())
 		}
 	}
