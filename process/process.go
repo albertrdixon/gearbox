@@ -274,7 +274,6 @@ func listen(p *Process, ctx context.Context) {
 
 func wait(p *Process, cancel context.CancelFunc) {
 	p.er = p.Wait()
-	log.Printf("[debug] %v exited", p)
 	cancel()
 }
 
