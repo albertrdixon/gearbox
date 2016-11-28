@@ -12,6 +12,7 @@ import (
 var DefaultFmt = "{role}-{env}-{instanceid}"
 
 func getInstanceTags(instanceid string, region string) map[string]string {
+	tags := make(map[string]string)
 	auth, err := aws.GetAuth("", "")
 	if err != nil {
 		log.Fatalf("Can't get AWS auth: %v", err)
@@ -24,10 +25,9 @@ func getInstanceTags(instanceid string, region string) map[string]string {
 
 	instanceTags, err := ec2conn.Tags(filter)
 	if err != nil {
-		log.Fatalf("Cannot query instance tags: %v", err)
+		return tags
 	}
 
-	tags := make(map[string]string)
 	for _, tag := range instanceTags.Tags {
 		tags[tag.Key] = tag.Value
 	}
@@ -38,27 +38,33 @@ func getInstanceTags(instanceid string, region string) map[string]string {
 func getMeta(key string) string {
 	meta, err := aws.GetMetaData(key)
 	if err != nil {
-		log.Fatalf("AWS metadata key cannot be determined: %v", err)
+		return ""
 	}
 	return string(meta)
 }
 
 func names() map[string]string {
-
-	machineid, err := ioutil.ReadFile("/etc/machine-id")
-	if err != nil {
-		log.Fatal("machine-id cannot be determined.")
+	var id = ""
+	if m, err := ioutil.ReadFile("/etc/machine-id"); err == nil {
+		id = string(m)[0:8]
 	}
 
-	instance := getMeta("instance-id")
 	az := getMeta("placement/availability-zone")
-	region := az[0 : len(az)-1]
+	instance := getMeta("instance-id")
+	in := ""
+	if len(instance) > 0 {
+		in = instance[0:10]
+	}
+	region := ""
+	if len(az) > 0 {
+		region = az[0 : len(az)-1]
+	}
 
 	tags := getInstanceTags(instance, region)
 
 	return map[string]string{
-		"machineid":  string(machineid)[0:8],
-		"instanceid": instance[0:10],
+		"machineid":  id,
+		"instanceid": in,
 		"region":     region,
 		"az":         az,
 		"role":       tags["Role"],
