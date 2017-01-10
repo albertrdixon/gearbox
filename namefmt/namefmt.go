@@ -4,15 +4,24 @@ import (
 	"io/ioutil"
 	"log"
 	"strings"
+	"time"
 
+	"github.com/cenkalti/backoff"
 	"github.com/mitchellh/goamz/aws"
 	"github.com/mitchellh/goamz/ec2"
 )
 
-var DefaultFmt = "{role}-{env}-{instanceid}"
+var (
+	DefaultFmt = "{role}-{env}-{instanceid}"
+
+	Timeout = 5 * time.Minute
+)
 
 func getInstanceTags(instanceid string, region string) map[string]string {
-	tags := make(map[string]string)
+	var (
+		tags = make(map[string]string)
+		b    = backoff.NewExponentialBackOff()
+	)
 	auth, err := aws.GetAuth("", "")
 	if err != nil {
 		log.Fatalf("Can't get AWS auth: %v", err)
@@ -23,21 +32,34 @@ func getInstanceTags(instanceid string, region string) map[string]string {
 	filter := ec2.NewFilter()
 	filter.Add("resource-id", instanceid)
 
-	instanceTags, err := ec2conn.Tags(filter)
-	if err != nil {
-		return tags
+	fn := func() error {
+		instanceTags, err := ec2conn.Tags(filter)
+		if err != nil {
+			return err
+		}
+		for _, tag := range instanceTags.Tags {
+			tags[tag.Key] = tag.Value
+		}
+		return nil
 	}
 
-	for _, tag := range instanceTags.Tags {
-		tags[tag.Key] = tag.Value
-	}
-
+	b.MaxElapsedTime = Timeout
+	backoff.Retry(fn, b)
 	return tags
 }
 
 func getMeta(key string) string {
-	meta, err := aws.GetMetaData(key)
-	if err != nil {
+	var (
+		meta []byte
+		err  error
+		b    = backoff.NewExponentialBackOff()
+	)
+	fn := func() error {
+		meta, err = aws.GetMetaData(key)
+		return err
+	}
+	b.MaxElapsedTime = Timeout
+	if er := backoff.Retry(fn, b); er != nil {
 		return ""
 	}
 	return string(meta)
